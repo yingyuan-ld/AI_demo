@@ -61,7 +61,8 @@ def transcribe_images(client: OpenAI, images: list) -> str:
     return (completion.choices[0].message.content or "").strip()
 
 
-def main() -> None:
+def load_documents() -> list:
+    """加载 PDF，必要时用 VL 补图片页，返回 Document 列表（仍在内存里）。"""
     if not PDF_PATH.exists():
         raise FileNotFoundError(f"找不到文件：{PDF_PATH}")
 
@@ -78,9 +79,6 @@ def main() -> None:
         else None
     )
 
-    vl_pages = 0
-    skipped_no_key = 0
-
     for index, doc in enumerate(docs):
         page = reader.pages[index]
         images = page_images(page)
@@ -92,7 +90,6 @@ def main() -> None:
             continue
 
         if client is None:
-            skipped_no_key += 1
             doc.metadata["extract"] = "image_need_vl"
             continue
 
@@ -101,9 +98,14 @@ def main() -> None:
         if transcribed:
             doc.page_content = transcribed
             doc.metadata["extract"] = "vl"
-            vl_pages += 1
 
+    return docs
+
+
+def write_load_preview(docs: list) -> None:
     empty_pages = [i for i, doc in enumerate(docs, start=1) if not doc.page_content.strip()]
+    vl_pages = sum(1 for doc in docs if doc.metadata.get("extract") == "vl")
+    skipped_no_key = sum(1 for doc in docs if doc.metadata.get("extract") == "image_need_vl")
     lines = [
         f"文件：{PDF_PATH.name}",
         f"加载结果：{len(docs)} 页（每页一个 Document）",
@@ -132,6 +134,11 @@ def main() -> None:
     print(f"vl_pages={vl_pages}")
     print(f"skipped_no_key={skipped_no_key}")
     print(f"preview_file={PREVIEW_PATH}")
+
+
+def main() -> None:
+    docs = load_documents()
+    write_load_preview(docs)
 
 
 if __name__ == "__main__":

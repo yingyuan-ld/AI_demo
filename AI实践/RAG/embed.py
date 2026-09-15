@@ -1,0 +1,118 @@
+"""第三步：嵌入（Embed）
+把切片后的文本变成向量。使用阿里云百炼 text-embedding-v3（中文友好）。
+
+向量会保存到 embeddings.npy，切片元数据保存到 chunks_meta.json，
+否则脚本结束内存里的向量就没了。下一步「存储」会读这两份文件。
+"""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+
+import numpy as np
+from openai import OpenAI
+
+from load import load_documents
+from split import split_documents
+
+# 输出路径，以及百炼向量模型、维度、单次最多 10 条（接口限制）
+BASE_DIR = Path(__file__).parent
+PREVIEW_PATH = BASE_DIR / "嵌入预览.txt"
+VECTOR_PATH = BASE_DIR / "embeddings.npy"
+META_PATH = BASE_DIR / "chunks_meta.json"
+EMBED_MODEL = "text-embedding-v3"
+EMBED_DIM = 1024
+BATCH_SIZE = 10
+
+
+# 用环境变量里的 Key 创建客户端，请求打到百炼的 OpenAI 兼容地址
+def make_client() -> OpenAI:
+    api_key = os.getenv("DASHSCOPE_API_KEY", "").strip()
+    if not api_key:
+        raise SystemExit("未找到环境变量 DASHSCOPE_API_KEY，嵌入需要调用百炼向量模型。")
+    return OpenAI(
+        api_key=api_key,
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    )
+
+
+# 按 BATCH_SIZE 分批调用嵌入接口，拼回与原文顺序一致的向量列表
+def embed_texts(client: OpenAI, texts: list[str]) -> list[list[float]]:
+    vectors: list[list[float]] = []
+    total = len(texts)
+    for start in range(0, total, BATCH_SIZE):
+        batch = texts[start : start + BATCH_SIZE]
+        response = client.embeddings.create(
+            model=EMBED_MODEL,
+            input=batch,
+            dimensions=EMBED_DIM,
+            encoding_format="float",
+        )
+        ordered = sorted(response.data, key=lambda item: item.index)
+        vectors.extend(item.embedding for item in ordered)
+        print(f"embedded={min(start + BATCH_SIZE, total)}/{total}")
+    return vectors
+
+
+# 向量写入 npy，正文和页码写入 json，供下一步存储/检索读取
+def save_embeddings(chunks: list, vectors: list[list[float]]) -> None:
+    array = np.array(vectors, dtype=np.float32)
+    np.save(VECTOR_PATH, array)
+    meta = []
+    for chunk, vector in zip(chunks, vectors):
+        meta.append(
+            {
+                "chunk_index": chunk.metadata.get("chunk_index"),
+                "page": chunk.metadata.get("page"),
+                "extract": chunk.metadata.get("extract"),
+                "source": chunk.metadata.get("source"),
+                "text": chunk.page_content,
+                "dim": len(vector),
+            }
+        )
+    META_PATH.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+# 写一份给人看的摘要：模型、维度、第 0 块正文和向量前几维
+def write_embed_preview(chunks: list, vectors: list[list[float]]) -> None:
+    first = vectors[0] if vectors else []
+    preview_dims = ", ".join(f"{x:.6f}" for x in first[:8])
+    lines = [
+        f"模型：{EMBED_MODEL}",
+        f"向量维度：{len(first) if first else 0}（指定 {EMBED_DIM}）",
+        f"切片数量：{len(chunks)}",
+        f"向量文件：{VECTOR_PATH.name}",
+        f"元数据文件：{META_PATH.name}",
+        "",
+        "--- 第 0 个切片 ---",
+        f"原 PDF 页码：{chunks[0].metadata.get('page') if chunks else ''}",
+        f"正文预览：{(chunks[0].page_content[:200] if chunks else '')}",
+        f"向量前 8 维：[{preview_dims}]",
+        "",
+        "说明：每个切片对应一行 1024 维小数。数值本身没有可读含义，",
+        "相近的文本会得到方向接近的向量，供后面检索使用。",
+    ]
+    PREVIEW_PATH.write_text("\n".join(lines), encoding="utf-8")
+    print(f"chunks={len(chunks)}")
+    print(f"dim={len(first) if first else 0}")
+    print(f"preview_file={PREVIEW_PATH}")
+    print(f"vector_file={VECTOR_PATH}")
+    print(f"meta_file={META_PATH}")
+
+
+def main() -> None:
+    # 加载 → 切片 → 批量嵌入 → 落盘 → 写预览
+    docs = load_documents()
+    chunks = split_documents(docs)
+    client = make_client()
+    vectors = embed_texts(client, [chunk.page_content for chunk in chunks])
+    if len(vectors) != len(chunks):
+        raise RuntimeError(f"向量数量 {len(vectors)} 与切片数量 {len(chunks)} 不一致")
+    save_embeddings(chunks, vectors)
+    write_embed_preview(chunks, vectors)
+
+
+if __name__ == "__main__":
+    main()

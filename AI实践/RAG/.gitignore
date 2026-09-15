@@ -1,2 +1,5 @@
 .env
 __pycache__/
+embeddings.npy
+chunks_meta.json
+chroma_db/
