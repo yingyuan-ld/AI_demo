@@ -19,8 +19,14 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 | OllamaEmbeddings | 多方 | 可以运行多种开源嵌入模型 |
 | JinaEmbeddings | Jina.ai | 顶级多语言嵌入模型 |
 | ZhipuAIEmbeddings | zhipu | 中文能力较强，嵌入维度 1024 |
-
-
+| DashScopeEmbeddings | 阿里云百炼  |
 
 ## 存储 store
+把向量和正文放进可检索的知识库。
+当前直接用 `embeddings.npy` + `chunks_meta.json` 当本地库，`store.py` 按余弦相似度取 Top-K。
+
+文本找向量
+vector_store.similarity_search(query)
+向量库的相似性搜索。
+vector_store.similarity_search_by_vector(embedding_vector)
 
