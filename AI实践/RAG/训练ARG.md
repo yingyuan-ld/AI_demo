@@ -31,3 +31,8 @@ vector_store.similarity_search(query)
 向量库的相似性搜索。
 vector_store.similarity_search_by_vector(embedding_vector)
 
+
+## 生成 generate
+查询重写
+
+
