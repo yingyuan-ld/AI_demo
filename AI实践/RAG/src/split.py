@@ -1,20 +1,17 @@
 """第二步：切片（Split）
-对加载得到的 Document 列表切块，不处理「加载预览.txt」。
+对加载得到的 Document 列表切块，不处理预览文件。
 
 保单中文按段落/句号切，块与块之间留一点重叠，避免条款在边界被切断。
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from load import load_documents
+from paths import PREVIEW_SPLIT, ensure_dirs
 
-# 预览路径，以及按长度切分的块大小、重叠字数
-BASE_DIR = Path(__file__).parent
-PREVIEW_PATH = BASE_DIR / "切片预览.txt"
+# 按长度切分的块大小、重叠字数
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 80
 
@@ -36,6 +33,7 @@ def split_documents(docs: list) -> list:
 
 # 把切片统计和前 12 块正文写入预览文件，方便人工抽查
 def write_split_preview(docs: list, chunks: list) -> None:
+    ensure_dirs()
     lengths = [len(c.page_content) for c in chunks]
     avg = round(sum(lengths) / len(lengths), 1) if lengths else 0
     lines = [
@@ -60,13 +58,13 @@ def write_split_preview(docs: list, chunks: list) -> None:
     if len(chunks) > len(show):
         lines.append(f"... 其余 {len(chunks) - len(show)} 个切片已生成，未全部写入预览。")
 
-    PREVIEW_PATH.write_text("\n".join(lines), encoding="utf-8")
+    PREVIEW_SPLIT.write_text("\n".join(lines), encoding="utf-8")
     print(f"source_pages={len(docs)}")
     print(f"chunks={len(chunks)}")
     print(f"chunk_chars_min={min(lengths) if lengths else 0}")
     print(f"chunk_chars_avg={avg}")
     print(f"chunk_chars_max={max(lengths) if lengths else 0}")
-    print(f"preview_file={PREVIEW_PATH}")
+    print(f"preview_file={PREVIEW_SPLIT}")
 
 
 def main() -> None:

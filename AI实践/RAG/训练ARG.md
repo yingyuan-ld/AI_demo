@@ -1,4 +1,22 @@
 # 文档向量化
+
+## 目录
+- `src/` 流水线脚本和 Chat Doc
+- `data/raw/` 原始 PDF
+- `data/chroma/` 本地向量库
+- `output/` 各步骤预览
+- `训练ARG.md` 学习笔记
+
+在 `AI实践/RAG` 下运行：
+```
+python src/load.py
+python src/split.py
+python src/embed.py
+python src/store.py
+python src/generate.py
+streamlit run src/chat_doc.py
+```
+
 ## 加载 loader
 csv html json md pdf 。。。
 ↓
@@ -23,8 +41,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 ## 存储 store
 把向量和正文放进可检索的知识库。
-`embed.py` 嵌入后写入本地 Chroma（`chroma_db/policy_chunks`），距离函数用 `cosine`。
-`store.py` 打开这个 collection 做检索，不再读 npy/json。
+`src/embed.py` 嵌入后写入本地 Chroma（`data/chroma/policy_chunks`），距离函数用 `cosine`。
+`src/store.py` 打开这个 collection 做检索，不再读 npy/json。
 
 文本找向量
 vector_store.similarity_search(query)
@@ -53,7 +71,7 @@ vector_store.similarity_search_by_vector(embedding_vector)
     排序  // 文档按与查询的相关性降序排列。LongContextReorder 解决lost in the middle
 
 ## Chat Doc
-`chat_doc.py`：Streamlit 多轮对话。历史参与查询重写（补全「这个」「那交费呢」），检索仍走 Chroma，答案带来源页码。
-启动：`streamlit run chat_doc.py`
+`src/chat_doc.py`：Streamlit 多轮对话。历史参与查询重写（补全「这个」「那交费呢」），检索仍走 Chroma，答案带来源页码。
+启动：`streamlit run src/chat_doc.py`
 
 

@@ -1,29 +1,29 @@
 """第三步：嵌入（Embed）
 把切片后的文本变成向量。使用阿里云百炼 text-embedding-v3（中文友好）。
 
-向量会写入本地 Chroma（chroma_db/）。npy/json 只是给人看的备份，检索不再读它们。
+向量会写入 data/chroma/。npy/json 只是给人看的备份，检索不再读它们。
 """
 
 from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
 
 import chromadb
 import numpy as np
 from openai import OpenAI
 
 from load import load_documents
+from paths import (
+    CHROMA_DIR,
+    COLLECTION_NAME,
+    META_PATH,
+    PREVIEW_EMBED,
+    VECTOR_PATH,
+    ensure_dirs,
+)
 from split import split_documents
 
-# 输出路径，以及百炼向量模型、维度、单次最多 10 条（接口限制）
-BASE_DIR = Path(__file__).parent
-PREVIEW_PATH = BASE_DIR / "嵌入预览.txt"
-VECTOR_PATH = BASE_DIR / "embeddings.npy"
-META_PATH = BASE_DIR / "chunks_meta.json"
-CHROMA_DIR = BASE_DIR / "chroma_db"
-COLLECTION_NAME = "policy_chunks"
 EMBED_MODEL = "text-embedding-v3"
 EMBED_DIM = 1024
 BATCH_SIZE = 10
@@ -89,6 +89,7 @@ def save_to_chroma(chunks: list, vectors: list[list[float]]):
 
 # 向量写入 npy/json 备份，并灌进 Chroma，供下一步检索
 def save_embeddings(chunks: list, vectors: list[list[float]]) -> None:
+    ensure_dirs()
     array = np.array(vectors, dtype=np.float32)
     np.save(VECTOR_PATH, array)
     meta = []
@@ -110,6 +111,7 @@ def save_embeddings(chunks: list, vectors: list[list[float]]) -> None:
 
 # 写一份给人看的摘要：模型、维度、第 0 块正文和向量前几维
 def write_embed_preview(chunks: list, vectors: list[list[float]]) -> None:
+    ensure_dirs()
     first = vectors[0] if vectors else []
     preview_dims = ", ".join(f"{x:.6f}" for x in first[:8])
     lines = [
@@ -127,10 +129,10 @@ def write_embed_preview(chunks: list, vectors: list[list[float]]) -> None:
         "说明：每个切片对应一行 1024 维小数。数值本身没有可读含义，",
         "相近的文本会得到方向接近的向量，供后面检索使用。",
     ]
-    PREVIEW_PATH.write_text("\n".join(lines), encoding="utf-8")
+    PREVIEW_EMBED.write_text("\n".join(lines), encoding="utf-8")
     print(f"chunks={len(chunks)}")
     print(f"dim={len(first) if first else 0}")
-    print(f"preview_file={PREVIEW_PATH}")
+    print(f"preview_file={PREVIEW_EMBED}")
     print(f"vector_file={VECTOR_PATH}")
     print(f"meta_file={META_PATH}")
 

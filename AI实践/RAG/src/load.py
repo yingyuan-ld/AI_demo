@@ -9,15 +9,13 @@ from __future__ import annotations
 
 import base64
 import os
-from pathlib import Path
 
 from langchain_community.document_loaders import PyPDFLoader
 from openai import OpenAI
 from pypdf import PdfReader
 
-BASE_DIR = Path(__file__).parent
-PDF_PATH = BASE_DIR / "物料" / "电子保单.pdf"
-PREVIEW_PATH = BASE_DIR / "加载预览.txt"
+from paths import PDF_PATH, PREVIEW_LOAD, ensure_dirs
+
 VL_MODEL = "qwen-vl-plus"
 # 文字太少才认为「这一页主要靠图」，避免 Logo/印章页每页都调 API
 TEXT_THRESHOLD = 30
@@ -103,6 +101,7 @@ def load_documents() -> list:
 
 
 def write_load_preview(docs: list) -> None:
+    ensure_dirs()
     empty_pages = [i for i, doc in enumerate(docs, start=1) if not doc.page_content.strip()]
     vl_pages = sum(1 for doc in docs if doc.metadata.get("extract") == "vl")
     skipped_no_key = sum(1 for doc in docs if doc.metadata.get("extract") == "image_need_vl")
@@ -128,12 +127,12 @@ def write_load_preview(docs: list) -> None:
         lines.append(preview)
         lines.append("")
 
-    PREVIEW_PATH.write_text("\n".join(lines), encoding="utf-8")
+    PREVIEW_LOAD.write_text("\n".join(lines), encoding="utf-8")
     print(f"loaded_pages={len(docs)}")
     print(f"empty_pages={len(empty_pages)}")
     print(f"vl_pages={vl_pages}")
     print(f"skipped_no_key={skipped_no_key}")
-    print(f"preview_file={PREVIEW_PATH}")
+    print(f"preview_file={PREVIEW_LOAD}")
 
 
 def main() -> None:

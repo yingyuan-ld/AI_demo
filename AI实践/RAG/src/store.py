@@ -1,26 +1,17 @@
 """第四步：存储（Store）
 打开本地 Chroma 做相似度检索。
 
-向量、正文、元数据已经在 embed 时写入 chroma_db/。
+向量、正文、元数据已经在 embed 时写入 data/chroma/。
 提问时才把问题编成向量，才能和库里的条款比方向。
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import chromadb
 
-from embed import (
-    CHROMA_DIR,
-    COLLECTION_NAME,
-    EMBED_DIM,
-    EMBED_MODEL,
-    make_client,
-)
+from embed import EMBED_DIM, EMBED_MODEL, make_client
+from paths import CHROMA_DIR, COLLECTION_NAME, PREVIEW_STORE, ensure_dirs
 
-# 预览路径，以及演示问题和返回条数
-PREVIEW_PATH = Path(__file__).parent / "存储预览.txt"
 DEMO_QUERY = "主险的保险期间和交费年限是多久？"
 TOP_K = 3
 
@@ -34,9 +25,9 @@ def open_collection():
             embedding_function=None,
         )
     except Exception:
-        raise FileNotFoundError("找不到 Chroma collection，请先运行 python embed.py") from None
+        raise FileNotFoundError("找不到 Chroma collection，请先运行 python src/embed.py") from None
     if collection.count() == 0:
-        raise FileNotFoundError("Chroma collection 是空的，请先运行 python embed.py")
+        raise FileNotFoundError("Chroma collection 是空的，请先运行 python src/embed.py")
     return collection
 
 
@@ -77,6 +68,7 @@ def write_store_preview(
     question: str,
     hits: list[tuple[float, dict]] | None,
 ) -> None:
+    ensure_dirs()
     lines = [
         f"向量库：Chroma（{CHROMA_DIR.name}/{COLLECTION_NAME}）",
         f"已入库条数：{count}",
@@ -94,8 +86,8 @@ def write_store_preview(
             )
             lines.append((item.get("text") or "")[:400])
             lines.append("")
-    PREVIEW_PATH.write_text("\n".join(lines), encoding="utf-8")
-    print(f"preview_file={PREVIEW_PATH}")
+    PREVIEW_STORE.write_text("\n".join(lines), encoding="utf-8")
+    print(f"preview_file={PREVIEW_STORE}")
 
 
 def main() -> None:

@@ -6,13 +6,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from embed import make_client
+from paths import PREVIEW_GENERATE, ensure_dirs
 from store import DEMO_QUERY, TOP_K, embed_query, open_collection, query_topk
 
-# 预览路径，以及用来写答案、改写问题的聊天模型
-PREVIEW_PATH = Path(__file__).parent / "生成预览.txt"
 CHAT_MODEL = "qwen-plus"
 
 
@@ -129,6 +126,7 @@ def write_generate_preview(
     hits: list[tuple[float, dict]] | None,
     answer: str | None,
 ) -> None:
+    ensure_dirs()
     lines = [
         f"聊天模型：{CHAT_MODEL}",
         f"检索条数：{TOP_K}",
@@ -149,8 +147,8 @@ def write_generate_preview(
             lines.append("")
         lines.append("--- 模型答案 ---")
         lines.append(answer or "")
-    PREVIEW_PATH.write_text("\n".join(lines), encoding="utf-8")
-    print(f"preview_file={PREVIEW_PATH}")
+    PREVIEW_GENERATE.write_text("\n".join(lines), encoding="utf-8")
+    print(f"preview_file={PREVIEW_GENERATE}")
 
 
 def main() -> None:

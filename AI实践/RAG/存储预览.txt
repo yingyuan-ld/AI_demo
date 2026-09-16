@@ -1,5 +1,0 @@
-向量库：Chroma（chroma_db/policy_chunks）
-已入库条数：498
-检索方式：Chroma 余弦距离（预览分数 = 1 - 距离，越接近 1 越相似）
-
-未做检索：缺少 DASHSCOPE_API_KEY，无法把问题编成向量。
