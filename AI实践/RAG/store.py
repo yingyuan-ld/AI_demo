@@ -1,39 +1,47 @@
 """第四步：存储（Store）
-把 embed 已经落盘的向量和正文当成本地知识库，并做一次相似度检索。
+打开本地 Chroma 做相似度检索。
 
-498 条向量直接在内存里做余弦相似度即可，不必再装大型向量数据库。
-写入本身不再调 API；提问时才把问题编成向量，才能和库里的条款比方向。
+向量、正文、元数据已经在 embed 时写入 chroma_db/。
+提问时才把问题编成向量，才能和库里的条款比方向。
 """
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
-import numpy as np
+import chromadb
 
-from embed import EMBED_DIM, EMBED_MODEL, META_PATH, VECTOR_PATH, make_client
+from embed import (
+    CHROMA_DIR,
+    COLLECTION_NAME,
+    EMBED_DIM,
+    EMBED_MODEL,
+    make_client,
+)
 
 # 预览路径，以及演示问题和返回条数
-BASE_DIR = Path(__file__).parent
-PREVIEW_PATH = BASE_DIR / "存储预览.txt"
+PREVIEW_PATH = Path(__file__).parent / "存储预览.txt"
 DEMO_QUERY = "主险的保险期间和交费年限是多久？"
 TOP_K = 3
 
 
-# 从磁盘读回向量矩阵和切片正文，行数必须一一对应
-def load_store() -> tuple[np.ndarray, list[dict]]:
-    if not VECTOR_PATH.exists() or not META_PATH.exists():
-        raise FileNotFoundError("找不到 embeddings.npy 或 chunks_meta.json，请先运行 python embed.py")
-    vectors = np.load(VECTOR_PATH).astype(np.float32)
-    meta = json.loads(META_PATH.read_text(encoding="utf-8"))
-    if len(vectors) != len(meta):
-        raise RuntimeError(f"向量行数 {len(vectors)} 与元数据条数 {len(meta)} 不一致")
-    return vectors, meta
+# 打开已经建好的本地库；没有 collection 说明还没跑过 embed
+def open_collection():
+    client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+    try:
+        collection = client.get_collection(
+            COLLECTION_NAME,
+            embedding_function=None,
+        )
+    except Exception:
+        raise FileNotFoundError("找不到 Chroma collection，请先运行 python embed.py") from None
+    if collection.count() == 0:
+        raise FileNotFoundError("Chroma collection 是空的，请先运行 python embed.py")
+    return collection
 
 
 # 把用户问题编成与库相同模型、相同维度的向量，才能比方向
-def embed_query(text: str) -> np.ndarray:
+def embed_query(text: str) -> list[float]:
     client = make_client()
     response = client.embeddings.create(
         model=EMBED_MODEL,
@@ -41,16 +49,26 @@ def embed_query(text: str) -> np.ndarray:
         dimensions=EMBED_DIM,
         encoding_format="float",
     )
-    return np.array(response.data[0].embedding, dtype=np.float32)
+    return list(response.data[0].embedding)
 
 
-# 先归一化再点积得到余弦相似度，按分数从高到低取前 k 条
-def cosine_topk(query: np.ndarray, matrix: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
-    q = query / (np.linalg.norm(query) + 1e-12)
-    norms = np.linalg.norm(matrix, axis=1, keepdims=True) + 1e-12
-    scores = (matrix / norms) @ q
-    index = np.argsort(-scores)[:k]
-    return index, scores[index]
+# Chroma 返回余弦距离（越小越像）；预览里再换成 1-距离，方便和「越接近 1 越相似」对照
+def query_topk(collection, query_vec: list[float], k: int) -> list[tuple[float, dict]]:
+    result = collection.query(
+        query_embeddings=[query_vec],
+        n_results=k,
+        include=["documents", "metadatas", "distances"],
+    )
+    hits: list[tuple[float, dict]] = []
+    documents = (result.get("documents") or [[]])[0]
+    metadatas = (result.get("metadatas") or [[]])[0]
+    distances = (result.get("distances") or [[]])[0]
+    for document, metadata, distance in zip(documents, metadatas, distances):
+        item = dict(metadata or {})
+        item["text"] = document or ""
+        similarity = 1.0 - float(distance)
+        hits.append((similarity, item))
+    return hits
 
 
 # 把库规模、测试问题和命中条款写入预览，方便人工核对检索是否合理
@@ -60,9 +78,9 @@ def write_store_preview(
     hits: list[tuple[float, dict]] | None,
 ) -> None:
     lines = [
-        f"存储文件：{VECTOR_PATH.name} + {META_PATH.name}",
-        f"已加载条数：{count}",
-        "检索方式：余弦相似度（越接近 1 越相似）",
+        f"向量库：Chroma（{CHROMA_DIR.name}/{COLLECTION_NAME}）",
+        f"已入库条数：{count}",
+        "检索方式：Chroma 余弦距离（预览分数 = 1 - 距离，越接近 1 越相似）",
         "",
     ]
     if hits is None:
@@ -81,21 +99,20 @@ def write_store_preview(
 
 
 def main() -> None:
-    # 读库 → 问题嵌入 → 余弦 Top-K → 写预览
-    vectors, meta = load_store()
-    print(f"stored={len(meta)} dim={vectors.shape[1]}")
+    # 打开 Chroma → 问题嵌入 → Top-K → 写预览
+    collection = open_collection()
+    print(f"stored={collection.count()} path={CHROMA_DIR}")
 
     hits = None
     try:
         query_vec = embed_query(DEMO_QUERY)
-        index, scores = cosine_topk(query_vec, vectors, TOP_K)
-        hits = [(float(scores[i]), meta[int(idx)]) for i, idx in enumerate(index)]
+        hits = query_topk(collection, query_vec, TOP_K)
         print(f"query={DEMO_QUERY}")
         print(f"top_scores={[round(s, 4) for s, _ in hits]}")
     except SystemExit as exc:
         print(exc)
 
-    write_store_preview(len(meta), DEMO_QUERY, hits)
+    write_store_preview(collection.count(), DEMO_QUERY, hits)
 
 
 if __name__ == "__main__":

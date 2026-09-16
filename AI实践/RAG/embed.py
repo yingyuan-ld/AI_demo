@@ -1,8 +1,7 @@
 """第三步：嵌入（Embed）
 把切片后的文本变成向量。使用阿里云百炼 text-embedding-v3（中文友好）。
 
-向量会保存到 embeddings.npy，切片元数据保存到 chunks_meta.json，
-否则脚本结束内存里的向量就没了。下一步「存储」会读这两份文件。
+向量会写入本地 Chroma（chroma_db/）。npy/json 只是给人看的备份，检索不再读它们。
 """
 
 from __future__ import annotations
@@ -11,6 +10,7 @@ import json
 import os
 from pathlib import Path
 
+import chromadb
 import numpy as np
 from openai import OpenAI
 
@@ -22,6 +22,8 @@ BASE_DIR = Path(__file__).parent
 PREVIEW_PATH = BASE_DIR / "嵌入预览.txt"
 VECTOR_PATH = BASE_DIR / "embeddings.npy"
 META_PATH = BASE_DIR / "chunks_meta.json"
+CHROMA_DIR = BASE_DIR / "chroma_db"
+COLLECTION_NAME = "policy_chunks"
 EMBED_MODEL = "text-embedding-v3"
 EMBED_DIM = 1024
 BATCH_SIZE = 10
@@ -56,7 +58,36 @@ def embed_texts(client: OpenAI, texts: list[str]) -> list[list[float]]:
     return vectors
 
 
-# 向量写入 npy，正文和页码写入 json，供下一步存储/检索读取
+# 把向量和正文写入 Chroma；每次重建，避免重复跑时堆两份切片
+def save_to_chroma(chunks: list, vectors: list[list[float]]):
+    client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+    try:
+        client.delete_collection(COLLECTION_NAME)
+    except Exception:
+        pass
+    collection = client.create_collection(
+        name=COLLECTION_NAME,
+        embedding_function=None,
+        configuration={"hnsw": {"space": "cosine"}},
+    )
+    collection.add(
+        ids=[f"chunk-{chunk.metadata.get('chunk_index', i)}" for i, chunk in enumerate(chunks)],
+        embeddings=vectors,
+        documents=[chunk.page_content for chunk in chunks],
+        metadatas=[
+            {
+                "chunk_index": int(chunk.metadata.get("chunk_index", i)),
+                "page": int(chunk.metadata.get("page") or 0),
+                "extract": str(chunk.metadata.get("extract") or ""),
+                "source": str(chunk.metadata.get("source") or ""),
+            }
+            for i, chunk in enumerate(chunks)
+        ],
+    )
+    return collection
+
+
+# 向量写入 npy/json 备份，并灌进 Chroma，供下一步检索
 def save_embeddings(chunks: list, vectors: list[list[float]]) -> None:
     array = np.array(vectors, dtype=np.float32)
     np.save(VECTOR_PATH, array)
@@ -73,6 +104,8 @@ def save_embeddings(chunks: list, vectors: list[list[float]]) -> None:
             }
         )
     META_PATH.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+    collection = save_to_chroma(chunks, vectors)
+    print(f"chroma_stored={collection.count()}")
 
 
 # 写一份给人看的摘要：模型、维度、第 0 块正文和向量前几维

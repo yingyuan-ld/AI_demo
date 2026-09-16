@@ -23,7 +23,8 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 ## 存储 store
 把向量和正文放进可检索的知识库。
-当前直接用 `embeddings.npy` + `chunks_meta.json` 当本地库，`store.py` 按余弦相似度取 Top-K。
+`embed.py` 嵌入后写入本地 Chroma（`chroma_db/policy_chunks`），距离函数用 `cosine`。
+`store.py` 打开这个 collection 做检索，不再读 npy/json。
 
 文本找向量
 vector_store.similarity_search(query)
