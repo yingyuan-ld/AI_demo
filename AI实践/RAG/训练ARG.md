@@ -30,9 +30,30 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 vector_store.similarity_search(query)
 向量库的相似性搜索。
 vector_store.similarity_search_by_vector(embedding_vector)
++词法检索 = 混合检索
 
+## 检索 retrieve
+当前是向量检索器：Chroma `collection.query`（余弦距离 Top-K）。LangChain 里可再包成 `as_retriever()`。
+
+| 检索器 | 适用场景 | 说明 |
+|---|---|---|
+| 向量检索器 | 向量数据库检索查询 | 大部分向量库都支持。现在的 Chroma 就是这一种 |
+| 文档检索器 | 内部知识库 / 企业内网 | 可以用类似 ES 搭一个私有化的强大检索器 |
+| 外部检索器 | 搜索场景优化 | 用外部 API 检索，可不依赖自建数据库 |
+| 关系数据库检索器 | SQL 查询、图数据查询 | 重点在对查询语言的重建（写更好的 SQL） |
+| 词法搜索检索器 | 精准的字面匹配 | 类似传统搜索引擎，代表为 BM25 |
+| 多重检索 | 需要更好的召回率 | 返回与原始问题扩展后最相关的文档块 |
+| 多重检索之分解 | Deep research | 把原始问题扩成子问题，再分别检索后汇总答案 |
 
 ## 生成 generate
-查询重写
+查询重写、查询重构
+检索调优
+    压缩：去掉多余 // eg:LLMChainExtractor
+    相似性分数
+    排序  // 文档按与查询的相关性降序排列。LongContextReorder 解决lost in the middle
+
+## Chat Doc
+`chat_doc.py`：Streamlit 多轮对话。历史参与查询重写（补全「这个」「那交费呢」），检索仍走 Chroma，答案带来源页码。
+启动：`streamlit run chat_doc.py`
 
 
